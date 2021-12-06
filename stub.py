@@ -4,9 +4,13 @@ import os
 import argparse
 import json
 
+import comparecast
 import numpy as np
+from numpy.random import choice
 import matplotlib.pyplot as plt
+from scipy.stats import norm
 from tqdm import tqdm
+
 from play_kuhn import play_kuhn, simulate_kuhn
 
 ###############################################################################
@@ -59,8 +63,8 @@ def assert_is_valid_sf_strategy(tfsdp, obj):
                         obj[(node["id"], action)] for action in node["actions"]
                     ]) - parent_reach) > 1e-3:
                 print(
-                    "At node ID %s the sum of the child sequences is not equal to the parent sequence",
-                    node["id"])
+                    f"At node ID {node['id']} the sum of the child sequences is not equal to the parent sequence"
+                )
 
 
 def best_response_value(tfsdp, utility):
@@ -393,8 +397,7 @@ def solve_problem_3_2(game):
     return solve_against_br(game)
 
 
-def solve_problem_3_3(game):
-    T = 1000
+def CFR_strategies(game, T):
     # uniform strategy
     p1_cfr = Cfr(game['decision_problem_pl1'])
     p2_cfr = Cfr(game['decision_problem_pl2'])
@@ -416,29 +419,104 @@ def solve_problem_3_3(game):
                 average_strategies[1][key] = (
                     average_strategies[1][key] * (0.5 * t * (t + 1)) +
                     (t + 1) * p2_strategy[key]) / (0.5 * (t + 1) * (t + 2))
-        game_values.append(
-            expected_utility_pl1(game, average_strategies[0],
-                                 average_strategies[1]))
-        saddle_gaps.append(
-            gap(game, average_strategies[0], average_strategies[1]))
+        # game_values.append(
+        #     expected_utility_pl1(game, average_strategies[0],
+        #                          average_strategies[1]))
+        # saddle_gaps.append(
+        #     gap(game, average_strategies[0], average_strategies[1]))
 
         p1_cfr.observe_utility(compute_utility_vector_pl1(game, p2_strategy))
         p1_strategy = p1_cfr.next_strategy()
         p2_cfr.observe_utility(compute_utility_vector_pl2(game, p1_strategy))
         p2_strategy = p2_cfr.next_strategy()
+    # return saddle_gaps, game_values
+    return average_strategies
 
-    print(
-        np.mean(
-            simulate_kuhn(average_strategies[0], average_strategies[1],
-                          10000)))
-    print(
-        "Expected pl1 utility of uniform game",
-        expected_utility_pl1(game,
-                             uniform_sf_strategy(game['decision_problem_pl1']),
-                             uniform_sf_strategy(
-                                 game['decision_problem_pl2'])))
 
-    return saddle_gaps, game_values
+def normal_ci(samples, alpha):
+    means = np.cumsum(samples) / np.arange(1, len(samples) + 1)
+    sds = []
+    for i in range(2, len(samples) + 1):
+        sds.append(np.sqrt(np.var(samples[:i], ddof=1) / i))
+    sds = np.array([sds[0]] + sds)
+
+    ls = means + sds * norm.ppf(alpha / 2)
+    us = means + sds * norm.ppf(1 - (alpha / 2))
+    return ls, us
+
+
+def make_exp_and_plot(p1_strategy, p2_strategy, game, samples, name):
+    samples = np.array(simulate_kuhn(p1_strategy, p2_strategy, samples)) * -1
+    true_val = expected_utility_pl1(game, p1_strategy, p2_strategy) * -1
+    h_cs = comparecast.confseq.confseq_h(samples,
+                                         alpha=0.05,
+                                         lo=-2.,
+                                         hi=2.,
+                                         boundary_type='stitching',
+                                         v_opt=len(samples) / 100)
+
+    eb_cs = comparecast.confseq.confseq_eb(samples,
+                                           alpha=0.05,
+                                           lo=-2.,
+                                           hi=2.,
+                                           boundary_type='stitching',
+                                           v_opt=len(samples) / 100)
+
+    norm_ci = normal_ci(samples, alpha=0.05)
+    fig = plt.figure(figsize=(6, 4))
+    ax = plt.gca()
+
+    shift = 100
+    for label, color, linestyle, cs in [
+        ('$C_t^{\mathrm{H}}$', 'blue', 'dashdot', h_cs),
+        ('$C_t^{\mathrm{EB}}$', 'orange', 'dotted', eb_cs),
+        ('Normal CI', 'green', '-', norm_ci)
+    ]:
+        lower, upper = cs
+        ax.plot(np.arange(shift,
+                          len(samples) + 1),
+                lower[(shift - 1):],
+                color=color,
+                linestyle=linestyle,
+                label=label)
+        ax.plot(np.arange(shift,
+                          len(samples) + 1),
+                upper[(shift - 1):],
+                color=color,
+                linestyle=linestyle)
+    ax.hlines(y=true_val,
+              color='r',
+              linestyle='--',
+              xmin=shift,
+              xmax=len(samples),
+              label=f"Game value {true_val:0.4f}")
+    ax.set_ylabel('$\mu$')
+    ax.set_xlabel('Time $t$')
+    ax.set_xscale('log')
+    ax.legend()
+    fig.suptitle(name)
+    fig.tight_layout()
+    fig.savefig(f"{name}.png")
+
+
+def make_bet_strategy(tfsdp):
+    strategy = {}
+    for entry in tfsdp:
+        if entry['type'] == 'decision':
+            if entry['parent_sequence'] is not None:
+                entering_prob = strategy[entry['parent_sequence']]
+            else:
+                entering_prob = 1
+            if 'P1:r' in entry['actions']:
+                for action in entry['actions']:
+                    strategy[(entry['id'], action)] = (1. if action == 'P1:r'
+                                                       else 0.) * entering_prob
+            else:
+                for action in entry['actions']:
+                    strategy[(entry['id'], action)] = (1. if action == 'P1:c'
+                                                       else 0.) * entering_prob
+    assert_is_valid_sf_strategy(tfsdp, strategy)
+    return strategy
 
 
 if __name__ == "__main__":
@@ -477,5 +555,12 @@ if __name__ == "__main__":
         plot_results(args.loc, args.name, game_values, saddle_gaps)
     else:
         assert args.problem == "3.3"
-        saddle_gaps, game_values = solve_problem_3_3(game)
-        plot_results(args.loc, args.name, game_values, saddle_gaps)
+        AlwaysBet = make_bet_strategy(game['decision_problem_pl1'])
+        print('alwaysbet done')
+        Optimal, p2_strat = CFR_strategies(game, 1000)
+        FewRM = CFR_strategies(game, 10)[0]
+        for name, strat in [('AlwaysBet', AlwaysBet), ('FewRM', FewRM),
+                            ('Optimal', Optimal)]:
+            # for name, strat in [('Optimal', Optimal)]:
+            make_exp_and_plot(strat, p2_strat, game, 100000, name)
+        # plot_results(args.loc, args.name, game_values, saddle_gaps)

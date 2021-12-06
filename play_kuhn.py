@@ -1,7 +1,5 @@
 import random
 
-from numpy.random import choice
-
 
 def normalize(d):
     normalizer = sum(d.values())
@@ -9,18 +7,17 @@ def normalize(d):
 
 
 def get_action_probs(seq, strat, actions, prefix):
-    # print(seq, prefix, actions)
-    # print(strat)
-    return {
+    res = {
         action: strat[(seq, f'{prefix}:{action}')]
         for action in actions if (seq, f'{prefix}:{action}') in strat
     }
+    return res
 
 
 def sample_action(seq, strat, actions, prefix):
     action_probs = normalize(get_action_probs(seq, strat, actions, prefix))
-    return choice([action for action, _ in action_probs], 1,
-                  [prob for _, prob in action_probs])[0]
+    return random.choices([action for action, _ in action_probs],
+                          weights=[prob for _, prob in action_probs])[0]
 
 
 def update_seq(p1_seq, p2_seq, action, prefix):
@@ -44,7 +41,7 @@ def play_kuhn(p1_strategy, p2_strategy):
         action = sample_action(p2_seq, p2_strategy, actions, 'P2')
         p1_seq, p2_seq = update_seq(p1_seq, p2_seq, action, 'P2')
         if action == 'c':
-            return showdown * 1
+            return showdown
         else:
             assert action == 'r'
             action = sample_action(p1_seq, p1_strategy, actions, 'P1')
