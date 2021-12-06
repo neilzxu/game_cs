@@ -7,6 +7,7 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from play_kuhn import play_kuhn, simulate_kuhn
 
 ###############################################################################
 # The next functions are already implemented for your convenience
@@ -19,8 +20,8 @@ from tqdm import tqdm
 
 
 def get_sequence_set(tfsdp):
-    """Returns a set of all sequences in the given tree-form sequential decision
-    process (TFSDP)"""
+    """Returns a set of all sequences in the given tree-form sequential
+    decision process (TFSDP)"""
 
     sequences = set()
     for node in tfsdp:
@@ -31,8 +32,8 @@ def get_sequence_set(tfsdp):
 
 
 def is_valid_RSigma_vector(tfsdp, obj):
-    """Checks that the given object is a dictionary keyed on the set of sequences
-    of the given tree-form sequential decision process (TFSDP)"""
+    """Checks that the given object is a dictionary keyed on the set of
+    sequences of the given tree-form sequential decision process (TFSDP)"""
 
     sequence_set = get_sequence_set(tfsdp)
     return isinstance(obj, dict) and obj.keys() == sequence_set
@@ -63,9 +64,9 @@ def assert_is_valid_sf_strategy(tfsdp, obj):
 
 
 def best_response_value(tfsdp, utility):
-    """Computes the value of max_{x in Q} x^T utility, where Q is the
-    sequence-form polytope for the given tree-form sequential decision
-    process (TFSDP)"""
+    """Computes the value of max_{x in Q} x^T utility, where Q is the sequence-
+    form polytope for the given tree-form sequential decision process
+    (TFSDP)"""
 
     assert is_valid_RSigma_vector(tfsdp, utility)
 
@@ -112,8 +113,8 @@ def compute_utility_vector_pl2(game, sf_strategy_pl1):
 
 
 def gap(game, sf_strategy_pl1, sf_strategy_pl2):
-    """Computes the saddle point gap of the given sequence-form strategies
-    for the players"""
+    """Computes the saddle point gap of the given sequence-form strategies for
+    the players."""
 
     assert_is_valid_sf_strategy(game["decision_problem_pl1"], sf_strategy_pl1)
     assert_is_valid_sf_strategy(game["decision_problem_pl2"], sf_strategy_pl2)
@@ -147,7 +148,7 @@ def transition(tree_nodes, node, a_s):
 
 def expected_utility_pl1(game, sf_strategy_pl1, sf_strategy_pl2):
     """Returns the expected utility for Player 1 in the game, when the two
-    players play according to the given strategies"""
+    players play according to the given strategies."""
 
     assert_is_valid_sf_strategy(game["decision_problem_pl1"], sf_strategy_pl1)
     assert_is_valid_sf_strategy(game["decision_problem_pl2"], sf_strategy_pl2)
@@ -158,7 +159,7 @@ def expected_utility_pl1(game, sf_strategy_pl1, sf_strategy_pl2):
 
 def uniform_sf_strategy(tfsdp):
     """Returns the uniform sequence-form strategy for the given tree-form
-    sequential decision process"""
+    sequential decision process."""
     strategy = {}
     for entry in tfsdp:
         if entry['type'] == 'decision':
@@ -418,7 +419,6 @@ def solve_problem_3_3(game):
         game_values.append(
             expected_utility_pl1(game, average_strategies[0],
                                  average_strategies[1]))
-
         saddle_gaps.append(
             gap(game, average_strategies[0], average_strategies[1]))
 
@@ -427,10 +427,18 @@ def solve_problem_3_3(game):
         p2_cfr.observe_utility(compute_utility_vector_pl2(game, p1_strategy))
         p2_strategy = p2_cfr.next_strategy()
 
+    print(
+        np.mean(
+            simulate_kuhn(average_strategies[0], average_strategies[1],
+                          10000)))
+    print(
+        "Expected pl1 utility of uniform game",
+        expected_utility_pl1(game,
+                             uniform_sf_strategy(game['decision_problem_pl1']),
+                             uniform_sf_strategy(
+                                 game['decision_problem_pl2'])))
+
     return saddle_gaps, game_values
-
-
-
 
 
 if __name__ == "__main__":
